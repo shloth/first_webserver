@@ -1,12 +1,13 @@
 require 'socket'
 #create server object
-server = TCPServer.new('localhost', 80)
+server = TCPServer.new('localhost', 8080)
 
 #parse incoming requests for useful data
 class RequestParser
   def initialize(request)
     @request = request
   end
+  #returns hash w/ parsed request info
   def parse
     method, path, version = @request.lines[0].split
     {
@@ -36,40 +37,54 @@ class RequestParser
   end
 end
 
-SERVER_ROOT = "/tmp/web-server"
+SERVER_ROOT = "./SERVER_ROOT/"
 class ResponsePreparer
   def initialize(request)
     @request = request
   end
-  def prepare_response(request)
-    
-    if @request.fetch(:path) == "/"
+
+  def prepare_response
+    if path == "/"
       respond_with(SERVER_ROOT + "index.html")
     else
-      respond_with(SERVER_ROOT + request.fetch(:path))
+      respond_with(SERVER_ROOT + path)
     end
   end
+
+  # LEARNING NOTE - 'private' will make methods only available to the Class
+  private
+
+  def path
+    @request.fetch(:path)
+  end
+
   def respond_with(path)
     if File.exists?(path)
-      send_ok_response(File.binread(path))
+      ok_response(File.binread(path))
     else
-      send_file_not_found
+      file_not_found_response
     end
   end
-  def send_ok_response(data)
-    Response.new(code: 200, data: data)
+
+  def ok_response(data)
+    Response.new(status_code: 200, data: data)
   end
-  def send_file_not_found
-    Respond.new(code: 404)
+
+  def file_not_found_response
+    Response.new(status_code: 404)
   end
 end
 class Response
-  def initialize(code:, data: "")
+  def initialize(status_code:, data: "")
     @response =
-      "HTTP/1.1 #{code}\r\n" +
+      "HTTP/1.1 #{status_code}\r\n" +
       "Content-Length: #{data.size}\r\n" +
       "\r\n" +
       "#{data}\r\n"
+    @status_code = status_code
+  end
+  def status_code
+    @status_code # LEARNING NOTE - doesn't need return, since ruby explicitly returns 
   end
   def send(client)
     client.write(@response)
@@ -84,9 +99,11 @@ loop {
   request = RequestParser.new(raw_request)
   #puts request.inspect
   #puts request.parse.inspect
-  requestData = request.parse
-  response = ResponsePreparer.new(requestData)
+  p request_hash = request.parse
+  p response_preparer = ResponsePreparer.new(request_hash)
+  p response = response_preparer.prepare_response
   #puts response.inspect
-  puts "#{client.peeraddr[3]} #{requestData.fetch(:path)} - #{response.fetch.code}"
+  puts "#{client.peeraddr[3]} #{request_hash.fetch(:path)} - #{response.status_code}"
+  response.send(client)
   #puts request
 }
